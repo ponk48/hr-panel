@@ -29,6 +29,7 @@
   .card { background: var(--card); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
   .card h2 { font-size: 16px; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: baseline; }
   .card h2 small { color: var(--muted); font-weight: 400; font-size: 13px; }
+  .card h2 small.pay { font-size: 12px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 8px; }
   .m b { display: block; font-size: 17px; }
   .m span { color: var(--muted); font-size: 12px; }
@@ -129,7 +130,10 @@
   <header><h1 id="fTitle">Новый кандидат</h1><button class="x" onclick="closeForm()">✕</button></header>
   <main>
     <div class="f"><label>Дата отклика</label><input type="date" id="fDate"></div>
-    <div class="f"><label>Город</label><div class="seg" data-f="city"></div></div>
+    <div class="f"><label>Город</label><div class="seg" data-f="city"></div>
+      <input id="fCity" list="allCities" placeholder="Другой город — начните вводить название" autocomplete="off" style="margin-top:8px">
+      <datalist id="allCities"></datalist></div>
+    <div class="f"><label>Как будет доставлять</label><div class="seg" data-f="transport"></div></div>
     <div class="f"><label>Откуда</label><div class="seg" data-f="source"></div></div>
     <div class="f"><label>Подходит?</label><div class="seg" data-f="qualified"></div></div>
     <div class="f" id="reasonBox"><label>Почему не подходит</label><input id="fReason" placeholder="например: возраст, конкурент, уже курьер"></div>
@@ -159,6 +163,7 @@ let API = '', KEY = '';
 try { const s = JSON.parse(localStorage.getItem('hrPanel') || 'null'); if (s) { API = s.api; KEY = s.key; } } catch (e) {}
 const OPTS = {
   city: ['Москва', 'Санкт-Петербург', 'Казань'],
+  transport: ['Пешком', 'Вело', 'Авто'],
   source: ['Авито, органика', 'Авито, продвижение', 'Сайт', 'Telegram', 'Другое'],
   qualified: ['Да', 'Нет'], linkSent: ['Да', 'Нет'], lead: ['Да', 'Нет']
 };
@@ -235,6 +240,8 @@ function tab(t) {
 
 function render(d) {
   DATA = d;
+  if (d.cities && d.cities.active) OPTS.city = d.cities.active;
+  $('allCities').innerHTML = ((d.cities && d.cities.all) || OPTS.city).map(c => `<option value="${esc(c)}">`).join('');
   $('upd').textContent = 'обновлено ' + d.updated;
   renderSum(); renderCand();
 }
@@ -258,7 +265,7 @@ function renderSum() {
     '</div><div class="note">Период: ' + dmy(p.from) + ' — ' + dmy(p.to) + '. Авито обновляется каждое утро за вчерашний день.</div>';
   DATA.summary.forEach(s => {
     const profitCls = Number(s.profit) > 0 ? 'pos' : Number(s.profit) < 0 ? 'neg' : '';
-    h += `<div class="card"><h2>${esc(s.city)}<small>потрачено ${rub(s.spend)}</small></h2>
+    h += `<div class="card"><h2><span>${esc(s.city)}${Number(s.pay5) ? `<small class="pay"> · ${rub(s.pay5)} за 5 заказов</small>` : ''}</span><small>потрачено ${rub(s.spend)}</small></h2>
       <div class="grid">
         <div class="m"><b>${num(s.impressions)}</b><span>показы</span></div>
         <div class="m"><b>${num(s.views)}</b><span>просмотры · ${pct(s.ctr)}</span></div>
@@ -287,15 +294,17 @@ function tagYN(label, v) {
 
 function renderCand() {
   const list = DATA.candidates.filter(c => cityFilter === 'Все' || c.city === cityFilter);
-  let h = '<div class="chips">' + ['Все'].concat(OPTS.city)
-    .map(c => `<button class="chip ${cityFilter === c ? 'on' : ''}" onclick="filterCity('${c}')">${c}</button>`).join('') + '</div>';
+  const fc = ['Все'].concat(OPTS.city);
+  DATA.candidates.forEach(c => { if (c.city && fc.indexOf(c.city) < 0) fc.push(c.city); });
+  let h = '<div class="chips">' + fc
+    .map(c => `<button class="chip ${cityFilter === c ? 'on' : ''}" data-c="${esc(c)}" onclick="filterCity(this.dataset.c)">${esc(c)}</button>`).join('') + '</div>';
   if (!list.length) { $('cand').innerHTML = h + '<div class="empty">Пока никого. Нажмите «+ Кандидат».</div>'; return; }
   const yn = v => v === 'Да' ? '<span class="tag y">Да</span>' : v === 'Нет' ? '<span class="tag n">Нет</span>' : '';
-  let t = '<div class="tbl"><table><thead><tr><th>Дата</th><th>Город</th><th>Откуда</th><th>Подходит</th><th>Причина</th>' +
+  let t = '<div class="tbl"><table><thead><tr><th>Дата</th><th>Город</th><th>Откуда</th><th>Подходит</th><th>Причина</th><th>Доставка</th>' +
     '<th>Ссылка</th><th>Регистрация</th><th>Статус Pampadu</th><th>Заказов</th><th>Начислено</th><th>Комментарий</th></tr></thead><tbody>';
   list.forEach(c => {
     t += `<tr onclick="openForm(${c.row})"><td class="nw">${dmy(c.date)}</td><td class="nw">${esc(c.city)}</td><td class="nw">${esc(c.source)}</td>
-      <td>${yn(c.qualified)}</td><td>${esc(c.reason)}</td><td>${yn(c.linkSent)}</td><td>${yn(c.lead)}</td>
+      <td>${yn(c.qualified)}</td><td>${esc(c.reason)}</td><td class="nw">${esc(c.transport)}</td><td>${yn(c.linkSent)}</td><td>${yn(c.lead)}</td>
       <td class="nw">${c.status ? `<span class="tag a">${esc(c.status)}</span>` : ''}</td><td>${esc(c.orders)}</td>
       <td class="nw">${Number(c.payout) ? rub(c.payout) : ''}</td><td class="cmt">${esc(c.comment)}</td></tr>`;
   });
@@ -303,7 +312,7 @@ function renderCand() {
   list.forEach(c => {
     h += `<div class="cand" onclick="openForm(${c.row})">
       <div class="r1">${esc(c.city || '—')}<span>${dmy(c.date)}</span></div>
-      <div class="src">${esc(c.source)}${c.reason ? ' · ' + esc(c.reason) : ''}</div>
+      <div class="src">${esc(c.source)}${c.transport ? ' · ' + esc(c.transport).toLowerCase() : ''}${c.reason ? ' · ' + esc(c.reason) : ''}</div>
       <div class="tags">${tagYN('подходит', c.qualified)}${tagYN('ссылка', c.linkSent)}${tagYN('регистрация', c.lead)}
         ${c.status ? `<span class="tag a">${esc(c.status)}</span>` : ''}
         ${c.orders !== '' ? `<span class="tag">заказов: ${esc(c.orders)}</span>` : ''}
@@ -324,6 +333,7 @@ function drawSeg() {
     el.innerHTML = OPTS[f].map(o => `<button type="button" class="chip ${form[f] === o ? 'on' : ''}" data-v="${esc(o)}">${esc(o)}</button>`).join('');
     el.querySelectorAll('button').forEach(b => b.onclick = () => {
       form[f] = form[f] === b.dataset.v ? '' : b.dataset.v;
+      if (f === 'city') $('fCity').value = form.city;
       drawSeg();
     });
   });
@@ -333,8 +343,9 @@ function drawSeg() {
 function openForm(row) {
   const c = row ? DATA.candidates.find(x => x.row === row) : null;
   editing = c ? c.row : null;
-  form = c ? { city: c.city, source: c.source, qualified: c.qualified, linkSent: c.linkSent, lead: c.lead }
-           : { city: cityFilter !== 'Все' ? cityFilter : '', source: 'Авито, органика', qualified: '', linkSent: '', lead: '' };
+  form = c ? { city: c.city, source: c.source, qualified: c.qualified, linkSent: c.linkSent, lead: c.lead, transport: c.transport }
+           : { city: cityFilter !== 'Все' ? cityFilter : '', source: 'Авито, органика', qualified: '', linkSent: '', lead: '', transport: 'Пешком' };
+  $('fCity').value = form.city || '';
   $('fTitle').textContent = c ? 'Кандидат' : 'Новый кандидат';
   $('fDate').value = c ? c.date : today();
   $('fReason').value = c ? c.reason : '';
@@ -345,11 +356,17 @@ function openForm(row) {
   $('sheet').classList.add('open');
   $('sheet').scrollTop = 0;
 }
+$('fCity').addEventListener('input', () => { form.city = $('fCity').value.trim(); drawSeg(); });
 function closeForm() { $('sheet').classList.remove('open'); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeForm(); });
 
 function save() {
+  form.city = $('fCity').value.trim();
+  const all = (DATA.cities && DATA.cities.all) || OPTS.city;
   if (!form.city) { toast('Выберите город'); return; }
+  const hit = all.find(x => x.toLowerCase() === form.city.toLowerCase());
+  if (!hit) { toast('Такого города нет в списке Pampadu — выберите из подсказок'); return; }
+  form.city = hit;
   const c = Object.assign({}, form, {
     row: editing, date: $('fDate').value,
     reason: form.qualified === 'Нет' ? $('fReason').value.trim() : '',
